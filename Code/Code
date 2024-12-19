@@ -1,0 +1,94 @@
+// Pin Initilizations
+const int redCarPin = 2;      // Red light 
+const int yellowCarPin = 3;   // Yellow light 
+const int greenCarPin = 4;    // Green light 
+
+const int redPedPin = 5;      // Red light for pedestrians
+const int greenPedPin = 6;    // Green light for pedestrians
+
+const int buttonPin = 7;      // Pedestrian button
+
+// Timing Constants (in milliseconds)
+const unsigned long redDuration = 2000;      // 2 seconds for red
+const unsigned long yellowDuration = 5000;  // 5 seconds for yellow
+const unsigned long greenDuration = 10000;  // 10 seconds for green
+const unsigned long pedestrianDuration = 5000; // 5 seconds for pedestrians
+
+// State Variables
+bool pedestrianRequested = false;
+
+void setup() {
+  // pin outputs
+  pinMode(redCarPin, OUTPUT);
+  pinMode(yellowCarPin, OUTPUT);
+  pinMode(greenCarPin, OUTPUT);
+  pinMode(redPedPin, OUTPUT);
+  pinMode(greenPedPin, OUTPUT);
+
+  // button pin input 
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  // car green and pedestrian red
+  digitalWrite(greenCarPin, HIGH);
+  digitalWrite(redPedPin, HIGH);
+
+  //  detect button press
+  attachInterrupt(digitalPinToInterrupt(buttonPin), requestPedestrianCrossing, FALLING);
+}
+
+void loop() {
+  if (pedestrianRequested) {
+    // pedestrian crossing
+    pedestrianRequested = false;
+    handlePedestrianCrossing();
+  } else {
+    // Regular traffic light cycle
+    trafficLightCycle();
+  }
+}
+
+void trafficLightCycle() {
+  // Green light for cars
+  digitalWrite(greenCarPin, HIGH);
+  digitalWrite(redCarPin, LOW);
+  delay(greenDuration);
+
+  // Yellow light for cars
+  digitalWrite(greenCarPin, LOW);
+  digitalWrite(yellowCarPin, HIGH);
+  delay(yellowDuration);
+
+  // Red light for cars
+  digitalWrite(yellowCarPin, LOW);
+  digitalWrite(redCarPin, HIGH);
+  delay(redDuration);
+}
+
+void handlePedestrianCrossing() {
+  // Cars: Go from green/yellow to red
+  digitalWrite(greenCarPin, LOW);
+  digitalWrite(yellowCarPin, HIGH);
+  delay(yellowDuration);
+
+  digitalWrite(yellowCarPin, LOW);
+  digitalWrite(redCarPin, HIGH);
+  delay(redDuration);
+
+  // Pedestrians: Green light
+  digitalWrite(redPedPin, LOW);
+  digitalWrite(greenPedPin, HIGH);
+  delay(pedestrianDuration);
+
+  // Reset pedestrian lights
+  digitalWrite(greenPedPin, LOW);
+  digitalWrite(redPedPin, HIGH);
+
+  // Cars: Back to green
+  digitalWrite(redCarPin, LOW);
+  digitalWrite(greenCarPin, HIGH);
+}
+
+void requestPedestrianCrossing() {
+  // pedestrian crossing in the main loop
+  pedestrianRequested = true;
+}
