@@ -1,0 +1,185 @@
+// Assigning pins
+const int TRAFFIC_LIGHT_1[] = {2, 3, 4};  // Traffic light set 1: Red, Yellow, Green
+const int TRAFFIC_LIGHT_2[] = {5, 6, 7};  // Traffic light set 2: Red, Yellow, Green
+const int PEDESTRIAN_LIGHT[] = {8, 9};    // Pedestrian light pins: Red and Green
+const int PEDESTRIAN_BUTTON = 10;         // Pedestrian button pin
+
+// Time pauses in milliseconds
+const unsigned long RED_TIME = 2000;      // Red light duration (2 second)
+const unsigned long YELLOW_TIME = 5000;   // Yellow light duration (5 seconds)
+const unsigned long GREEN_TIME = 10000;    // Green light duration (10 seconds)
+
+// Enumeration for traffic light states
+enum class SignalState {
+    RED_SIGNAL,          // Cars stop, pedestrians wait
+    YELLOW_SIGNAL,       // Cars prepare to stop
+    GREEN_SIGNAL,        // Cars go, pedestrians wait
+    PEDESTRIAN_SIGNAL    // Cars stop, pedestrians cross
+};
+
+// Handles pedestrian button press
+class PedestrianRequestHandler {
+private:
+    bool request = false; // Tracks if a pedestrian request is active
+
+public:
+    // Checks if the pedestrian button is pressed
+    void checkButtonPress() {
+        if (digitalRead(PEDESTRIAN_BUTTON) == LOW) {
+            request = true;
+        }
+    }
+
+    // Returns true if a pedestrian request is active
+    bool isRequested() const { return request; }
+
+    // Resets the pedestrian request
+    void resetRequest() { request = false; }
+};
+
+// Controls LEDs for traffic and pedestrian lights
+class TrafficLightController {
+public:
+    // Initialize pin modes for all LEDs and the button
+    void initializePins() {
+        for (int pin : TRAFFIC_LIGHT_1) pinMode(pin, OUTPUT);
+        for (int pin : TRAFFIC_LIGHT_2) pinMode(pin, OUTPUT);
+        for (int pin : PEDESTRIAN_LIGHT) pinMode(pin, OUTPUT);
+        pinMode(PEDESTRIAN_BUTTON, INPUT_PULLUP);
+    }
+
+    // Update LEDs based on the current traffic light state
+    void setSignalState(SignalState state, const int trafficLightPins[]) {
+        // Turn off all LEDs
+        for (int i = 0; i < 3; i++) digitalWrite(trafficLightPins[i], LOW);
+        for (int pin : PEDESTRIAN_LIGHT) digitalWrite(pin, LOW);
+
+        // Activate LEDs based on the current state
+        switch (state) {
+            case SignalState::RED_SIGNAL:
+                digitalWrite(trafficLightPins[0], HIGH);  // Traffic Red
+                digitalWrite(PEDESTRIAN_LIGHT[0], HIGH); // Pedestrian Red
+                break;
+            case SignalState::YELLOW_SIGNAL:
+                digitalWrite(trafficLightPins[1], HIGH);  // Traffic Yellow
+                digitalWrite(PEDESTRIAN_LIGHT[0], HIGH); // Pedestrian Red
+                break;
+            case SignalState::GREEN_SIGNAL:
+                digitalWrite(trafficLightPins[2], HIGH);  // Traffic Green
+                digitalWrite(PEDESTRIAN_LIGHT[0], HIGH); // Pedestrian Red
+                break;
+            case SignalState::PEDESTRIAN_SIGNAL:
+                digitalWrite(PEDESTRIAN_LIGHT[1], HIGH); // Pedestrian Green
+                digitalWrite(trafficLightPins[0], HIGH); // Traffic Red
+                break;
+        }
+    }
+};
+
+// Manages the state machine and timing
+class TrafficLightSystem {
+private:
+    SignalState state1 = SignalState::RED_SIGNAL;        // State for traffic light set 1
+    SignalState state2 = SignalState::RED_SIGNAL;        // State for traffic light set 2
+    unsigned long lastStateChangeTime = 0;              // Time of the last state change
+    PedestrianRequestHandler pedestrianHandler;         // Handles pedestrian requests
+    TrafficLightController lightController;             // Controls LED lights
+
+public:
+    // Set up the system: initialize pins and set the initial state
+    void setup() {
+        lightController.initializePins();
+        lightController.setSignalState(state1, TRAFFIC_LIGHT_1);
+        lightController.setSignalState(state2, TRAFFIC_LIGHT_2);
+        lastStateChangeTime = millis();
+    }
+
+    // Update the system: handle state transitions and pedestrian requests
+    void update() {
+        unsigned long currentTime = millis();
+
+        // Check if the pedestrian button is pressed
+        pedestrianHandler.checkButtonPress();
+
+        // Handle pedestrian crossing priority
+        if (pedestrianHandler.isRequested()) {
+            handlePedestrianCrossing();
+            return;
+        }
+
+        // Handle traffic light state transitions
+        if (currentTime - lastStateChangeTime >= getStateDuration()) {
+            transitionStates();
+            lastStateChangeTime = currentTime;
+        }
+    }
+
+private:
+    // Get the duration for the current state
+    unsigned long getStateDuration() {
+        switch (state1) {
+            case SignalState::RED_SIGNAL:
+            case SignalState::PEDESTRIAN_SIGNAL:
+                return RED_TIME;
+            case SignalState::YELLOW_SIGNAL:
+                return YELLOW_TIME;
+            case SignalState::GREEN_SIGNAL:
+                return GREEN_TIME;
+        }
+        return 0;
+    }
+
+    // Transition the states for both traffic light sets
+    void transitionStates() {
+        // Transition logic for light set 1
+        switch (state1) {
+            case SignalState::RED_SIGNAL:
+                state1 = SignalState::GREEN_SIGNAL;
+                state2 = SignalState::RED_SIGNAL; // Set light 2 to red when light 1 is green
+                break;
+            case SignalState::GREEN_SIGNAL:
+                state1 = SignalState::YELLOW_SIGNAL;
+                break;
+            case SignalState::YELLOW_SIGNAL:
+                state1 = SignalState::RED_SIGNAL;
+                state2 = SignalState::GREEN_SIGNAL; // Light 2 goes green when light 1 is red
+                break;
+            case SignalState::PEDESTRIAN_SIGNAL:
+                state1 = SignalState::RED_SIGNAL;
+                state2 = SignalState::RED_SIGNAL;
+                break;
+        }
+
+        // Update LEDs
+        lightController.setSignalState(state1, TRAFFIC_LIGHT_1);
+        lightController.setSignalState(state2, TRAFFIC_LIGHT_2);
+    }
+
+    // Handle pedestrian crossing: force all lights to yellow, then red, and pedestrian to green
+    void handlePedestrianCrossing() {
+        lightController.setSignalState(SignalState::YELLOW_SIGNAL, TRAFFIC_LIGHT_1);
+        lightController.setSignalState(SignalState::YELLOW_SIGNAL, TRAFFIC_LIGHT_2);
+        delay(YELLOW_TIME);
+
+        lightController.setSignalState(SignalState::RED_SIGNAL, TRAFFIC_LIGHT_1);
+        lightController.setSignalState(SignalState::RED_SIGNAL, TRAFFIC_LIGHT_2);
+        delay(RED_TIME);
+
+        lightController.setSignalState(SignalState::PEDESTRIAN_SIGNAL, TRAFFIC_LIGHT_1);
+        lightController.setSignalState(SignalState::PEDESTRIAN_SIGNAL, TRAFFIC_LIGHT_2);
+        delay(RED_TIME);
+
+        pedestrianHandler.resetRequest();
+    }
+};
+
+// Instantiate the traffic light system
+TrafficLightSystem trafficLightSystem;
+
+void setup() {
+    trafficLightSystem.setup();
+}
+
+void loop() {
+    trafficLightSystem.update();
+}
