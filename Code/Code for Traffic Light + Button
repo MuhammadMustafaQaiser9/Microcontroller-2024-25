@@ -1,94 +1,151 @@
-// Pin Initilizations
-const int redCarPin = 2;      // Red light 
-const int yellowCarPin = 3;   // Yellow light 
-const int greenCarPin = 4;    // Green light 
+// Assigning pins
+const int TRAFFIC_LIGHT_PINS[] = {2, 3, 4};   // Traffic light 1: Red, Yellow, Green
+const int TRAFFIC_LIGHT2_PINS[] = {5, 6, 7};  // Traffic light 2: Red, Yellow, Green
+const int PEDESTRIAN_LIGHT_PINS[] = {8, 9};   // Pedestrian lights: Red and Green
+const int PEDESTRIAN_BUTTON = 10;             // Pedestrian button pin
 
-const int redPedPin = 5;      // Red light for pedestrians
-const int greenPedPin = 6;    // Green light for pedestrians
+// Time durations (in milliseconds)
+const unsigned long RED_LIGHT_TIME = 2000;    // 2 seconds
+const unsigned long YELLOW_LIGHT_TIME = 1000; // 1 second
+const unsigned long GREEN_LIGHT_TIME = 4000;  // 4 seconds
 
-const int buttonPin = 7;      // Pedestrian button
+// Traffic light states
+enum class SignalState {
+    RED_SIGNAL,
+    YELLOW_SIGNAL,
+    GREEN_SIGNAL,
+    PEDESTRIAN_SIGNAL
+};
 
-// Timing Constants (in milliseconds)
-const unsigned long redDuration = 2000;      // 2 seconds for red
-const unsigned long yellowDuration = 5000;  // 5 seconds for yellow
-const unsigned long greenDuration = 10000;  // 10 seconds for green
-const unsigned long pedestrianDuration = 5000; // 5 seconds for pedestrians
+// Handles pedestrian button press
+class PedestrianRequestHandler {
+private:
+    bool request = false; // Track if pedestrian request is active
 
-// State Variables
-bool pedestrianRequested = false;
+public:
+    void checkButtonPress() {
+        if (digitalRead(PEDESTRIAN_BUTTON) == LOW) {
+            request = true;
+        }
+    }
+
+    bool isRequested() const { return request; }
+
+    void resetRequest() { request = false; }
+};
+
+// Manages the LEDs
+class TrafficLightController {
+public:
+    void initializePins() {
+        for (int pin : TRAFFIC_LIGHT_PINS) pinMode(pin, OUTPUT);
+        for (int pin : TRAFFIC_LIGHT2_PINS) pinMode(pin, OUTPUT);
+        for (int pin : PEDESTRIAN_LIGHT_PINS) pinMode(pin, OUTPUT);
+        pinMode(PEDESTRIAN_BUTTON, INPUT_PULLUP); // Enable internal pull-up for button
+    }
+
+    void setSignalState(SignalState state) {
+        // Turn off all lights
+        for (int pin : TRAFFIC_LIGHT_PINS) digitalWrite(pin, LOW);
+        for (int pin : TRAFFIC_LIGHT2_PINS) digitalWrite(pin, LOW);
+        for (int pin : PEDESTRIAN_LIGHT_PINS) digitalWrite(pin, LOW);
+
+        // Activate appropriate lights based on the state
+        switch (state) {
+            case SignalState::RED_SIGNAL:
+                digitalWrite(TRAFFIC_LIGHT_PINS[0], HIGH); // Traffic 1 Red
+                digitalWrite(TRAFFIC_LIGHT2_PINS[0], HIGH); // Traffic 2 Red
+                digitalWrite(PEDESTRIAN_LIGHT_PINS[0], HIGH); // Pedestrian Red
+                break;
+            case SignalState::YELLOW_SIGNAL:
+                digitalWrite(TRAFFIC_LIGHT_PINS[1], HIGH); // Traffic 1 Yellow
+                digitalWrite(TRAFFIC_LIGHT2_PINS[1], HIGH); // Traffic 2 Yellow
+                digitalWrite(PEDESTRIAN_LIGHT_PINS[0], HIGH); // Pedestrian Red
+                break;
+            case SignalState::GREEN_SIGNAL:
+                digitalWrite(TRAFFIC_LIGHT_PINS[2], HIGH); // Traffic 1 Green
+                digitalWrite(TRAFFIC_LIGHT2_PINS[0], HIGH); // Traffic 2 Red
+                digitalWrite(PEDESTRIAN_LIGHT_PINS[0], HIGH); // Pedestrian Red
+                break;
+            case SignalState::PEDESTRIAN_SIGNAL:
+                digitalWrite(TRAFFIC_LIGHT_PINS[0], HIGH); // Traffic 1 Red
+                digitalWrite(TRAFFIC_LIGHT2_PINS[0], HIGH); // Traffic 2 Red
+                digitalWrite(PEDESTRIAN_LIGHT_PINS[1], HIGH); // Pedestrian Green
+                break;
+        }
+    }
+};
+
+// State machine and timing logic
+class TrafficLightSystem {
+private:
+    SignalState currentState = SignalState::RED_SIGNAL;  // Initial state
+    unsigned long lastStateChangeTime = 0;              // Time of last state change
+    PedestrianRequestHandler pedestrianRequestHandler;
+    TrafficLightController lightController;
+
+public:
+    void setup() {
+        lightController.initializePins();
+        lightController.setSignalState(SignalState::RED_SIGNAL);
+        lastStateChangeTime = millis();
+    }
+
+    void update() {
+        unsigned long currentTime = millis();
+
+        pedestrianRequestHandler.checkButtonPress();
+
+        switch (currentState) {
+            case SignalState::RED_SIGNAL:
+                if (pedestrianRequestHandler.isRequested()) {
+                    changeState(SignalState::PEDESTRIAN_SIGNAL);
+                } else if (currentTime - lastStateChangeTime >= RED_LIGHT_TIME) {
+                    changeState(SignalState::GREEN_SIGNAL);
+                }
+                break;
+
+            case SignalState::GREEN_SIGNAL:
+                if (pedestrianRequestHandler.isRequested()) {
+                    changeState(SignalState::YELLOW_SIGNAL);
+                } else if (currentTime - lastStateChangeTime >= GREEN_LIGHT_TIME) {
+                    changeState(SignalState::YELLOW_SIGNAL);
+                }
+                break;
+
+            case SignalState::YELLOW_SIGNAL:
+                if (currentTime - lastStateChangeTime >= YELLOW_LIGHT_TIME) {
+                    if (pedestrianRequestHandler.isRequested()) {
+                        changeState(SignalState::PEDESTRIAN_SIGNAL);
+                    } else {
+                        changeState(SignalState::RED_SIGNAL);
+                    }
+                }
+                break;
+
+            case SignalState::PEDESTRIAN_SIGNAL:
+                if (currentTime - lastStateChangeTime >= RED_LIGHT_TIME) {
+                    pedestrianRequestHandler.resetRequest();
+                    changeState(SignalState::RED_SIGNAL);
+                }
+                break;
+        }
+    }
+
+private:
+    void changeState(SignalState newState) {
+        currentState = newState;
+        lightController.setSignalState(newState);
+        lastStateChangeTime = millis();
+    }
+};
+
+TrafficLightSystem trafficLightSystem;
 
 void setup() {
-  // pin outputs
-  pinMode(redCarPin, OUTPUT);
-  pinMode(yellowCarPin, OUTPUT);
-  pinMode(greenCarPin, OUTPUT);
-  pinMode(redPedPin, OUTPUT);
-  pinMode(greenPedPin, OUTPUT);
-
-  // button pin input 
-  pinMode(buttonPin, INPUT_PULLUP);
-
-  // car green and pedestrian red
-  digitalWrite(greenCarPin, HIGH);
-  digitalWrite(redPedPin, HIGH);
-
-  //  detect button press
-  attachInterrupt(digitalPinToInterrupt(buttonPin), requestPedestrianCrossing, FALLING);
+    trafficLightSystem.setup();
 }
 
 void loop() {
-  if (pedestrianRequested) {
-    // pedestrian crossing
-    pedestrianRequested = false;
-    handlePedestrianCrossing();
-  } else {
-    // Regular traffic light cycle
-    trafficLightCycle();
-  }
-}
-
-void trafficLightCycle() {
-  // Green light for cars
-  digitalWrite(greenCarPin, HIGH);
-  digitalWrite(redCarPin, LOW);
-  delay(greenDuration);
-
-  // Yellow light for cars
-  digitalWrite(greenCarPin, LOW);
-  digitalWrite(yellowCarPin, HIGH);
-  delay(yellowDuration);
-
-  // Red light for cars
-  digitalWrite(yellowCarPin, LOW);
-  digitalWrite(redCarPin, HIGH);
-  delay(redDuration);
-}
-
-void handlePedestrianCrossing() {
-  // Cars: Go from green/yellow to red
-  digitalWrite(greenCarPin, LOW);
-  digitalWrite(yellowCarPin, HIGH);
-  delay(yellowDuration);
-
-  digitalWrite(yellowCarPin, LOW);
-  digitalWrite(redCarPin, HIGH);
-  delay(redDuration);
-
-  // Pedestrians: Green light
-  digitalWrite(redPedPin, LOW);
-  digitalWrite(greenPedPin, HIGH);
-  delay(pedestrianDuration);
-
-  // Reset pedestrian lights
-  digitalWrite(greenPedPin, LOW);
-  digitalWrite(redPedPin, HIGH);
-
-  // Cars: Back to green
-  digitalWrite(redCarPin, LOW);
-  digitalWrite(greenCarPin, HIGH);
-}
-
-void requestPedestrianCrossing() {
-  // pedestrian crossing in the main loop
-  pedestrianRequested = true;
+    trafficLightSystem.update();
 }
